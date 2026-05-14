@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import tecnicos, clientes, ordenes, contratos, estadisticas, webhooks
 from auth import router as auth_router
 
-app = FastAPI(title="FieldOps API", version="1.0.0")
+app = FastAPI(title="TecnoOP API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,6 +24,10 @@ app.include_router(estadisticas.router, prefix="/estadisticas", tags=["estadisti
 app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.get("/")
 def root():
-    return {"status": "ok", "app": "FieldOps API v1.0"}
+    return {"status": "ok", "app": "TecnoOP API v1.0"}

@@ -1,18 +1,17 @@
 import os
+import bcrypt
 from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from database import get_db
 
 router = APIRouter()
 security = HTTPBearer()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 ALGORITHM = "HS256"
@@ -50,7 +49,7 @@ def login(body: LoginRequest):
 
     user = result.data[0]
 
-    if not pwd_context.verify(body.password, user["password"]):
+    if not bcrypt.checkpw(body.password.encode(), user["password"].encode()):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
     token = create_access_token({

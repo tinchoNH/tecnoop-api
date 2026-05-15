@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import tecnicos, clientes, ordenes, contratos, estadisticas, webhooks
+from routers import tecnicos, clientes, ordenes, contratos, estadisticas, webhooks, usuarios
 from auth import router as auth_router
 
 app = FastAPI(title="TecnoOP API", version="1.0.0")
@@ -22,6 +22,7 @@ app.include_router(ordenes.router, prefix="/ordenes", tags=["ordenes"])
 app.include_router(contratos.router, prefix="/contratos", tags=["contratos"])
 app.include_router(estadisticas.router, prefix="/estadisticas", tags=["estadisticas"])
 app.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+app.include_router(usuarios.router, prefix="/usuarios", tags=["usuarios"])
 
 
 @app.get("/health")

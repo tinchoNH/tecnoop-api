@@ -57,6 +57,7 @@ def login(body: LoginRequest):
         "empresa_id": user["empresa_id"],
         "rol": user["rol"],
         "nombre": user["nombre"],
+        "tecnico_id": user.get("tecnico_id"),
     })
 
     return {
@@ -68,5 +69,6 @@ def login(body: LoginRequest):
             "email": user["email"],
             "rol": user["rol"],
             "empresa_id": user["empresa_id"],
+            "tecnico_id": user.get("tecnico_id"),
         }
     }

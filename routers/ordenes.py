@@ -40,6 +40,26 @@ def listar_ordenes(
     return result.data
 
 
+@router.get("/mis-ots")
+def mis_ordenes_hoy(token=Depends(verify_token)):
+    empresa_id = get_empresa_id(token)
+    tecnico_id = token.get("tecnico_id")
+    if not tecnico_id:
+        raise HTTPException(403, "Este endpoint es solo para técnicos")
+    db = get_db()
+    hoy = date.today().isoformat()
+    result = (
+        db.table("ordenes_trabajo")
+        .select(SELECT_COMPLETO)
+        .eq("empresa_id", empresa_id)
+        .eq("tecnico_id", tecnico_id)
+        .eq("fecha_programada", hoy)
+        .order("hora_inicio")
+        .execute()
+    )
+    return result.data
+
+
 @router.get("/hoy")
 def ordenes_hoy(token=Depends(verify_token)):
     empresa_id = get_empresa_id(token)

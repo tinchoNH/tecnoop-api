@@ -11,6 +11,7 @@ class OrdenCreate(BaseModel):
     fecha_programada: date
     hora_inicio:      Optional[str]  = None   # "HH:MM"
     tecnico_id:       Optional[str]  = None
+    tecnicos_ids:     Optional[List[str]] = []
     contrato_id:      Optional[str]  = None
     checklist:        Optional[list] = []
 
@@ -19,6 +20,7 @@ class OrdenUpdate(BaseModel):
     cliente_id:       Optional[str]  = None
     sede_id:          Optional[str]  = None
     tecnico_id:       Optional[str]  = None
+    tecnicos_ids:     Optional[List[str]] = None
     tipo_servicio:    Optional[str]  = None
     descripcion:      Optional[str]  = None
     fecha_programada: Optional[date] = None

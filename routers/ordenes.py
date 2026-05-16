@@ -52,12 +52,17 @@ def mis_ordenes_hoy(token=Depends(verify_token)):
         db.table("ordenes_trabajo")
         .select(SELECT_COMPLETO)
         .eq("empresa_id", empresa_id)
-        .eq("tecnico_id", tecnico_id)
         .eq("fecha_programada", hoy)
         .order("hora_inicio")
         .execute()
     )
-    return result.data
+    # Filtrar en Python para cubrir tecnico_id legacy y tecnicos_ids array
+    data = [
+        o for o in result.data
+        if o.get("tecnico_id") == tecnico_id
+        or tecnico_id in (o.get("tecnicos_ids") or [])
+    ]
+    return data
 
 
 @router.get("/hoy")
@@ -100,9 +105,13 @@ def crear_orden(body: OrdenCreate, token=Depends(verify_token)):
     data = body.model_dump(exclude_none=True)
     data["empresa_id"] = empresa_id
     data["fecha_programada"] = str(data["fecha_programada"])
+    # Sincronizar tecnico_id <-> tecnicos_ids
+    if data.get("tecnicos_ids"):
+        data["tecnico_id"] = data["tecnicos_ids"][0]
+    elif data.get("tecnico_id"):
+        data["tecnicos_ids"] = [data["tecnico_id"]]
     data["estado"] = "asignada" if data.get("tecnico_id") else "pendiente"
     result = db.table("ordenes_trabajo").insert(data).execute()
-    # re-fetch with joins
     return obtener_orden(result.data[0]["id"], token)
 
 
@@ -113,7 +122,12 @@ def actualizar_orden(orden_id: str, body: OrdenUpdate, token=Depends(verify_toke
     data = body.model_dump(exclude_none=True)
     if "fecha_programada" in data:
         data["fecha_programada"] = str(data["fecha_programada"])
-    # if tecnico assigned and still pendiente, move to asignada
+    # Sincronizar tecnico_id <-> tecnicos_ids
+    if data.get("tecnicos_ids"):
+        data["tecnico_id"] = data["tecnicos_ids"][0]
+    elif data.get("tecnico_id"):
+        data["tecnicos_ids"] = [data["tecnico_id"]]
+    # Si hay técnico y la orden está pendiente, pasarla a asignada
     if data.get("tecnico_id"):
         orden = db.table("ordenes_trabajo").select("estado").eq("id", orden_id).eq("empresa_id", empresa_id).single().execute()
         if orden.data and orden.data["estado"] == "pendiente":

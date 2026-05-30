@@ -86,6 +86,31 @@ def dashboard(token=Depends(verify_token)):
         elif ot["estado"] != "cancelada":
             semana_map[key]["pendientes"] += 1
 
+    # OTs pendientes hoy (para dashboard)
+    r_pendientes = (
+        db.table("ordenes_trabajo")
+        .select("id, tipo_servicio, hora_inicio, estado, clientes(razon_social)")
+        .eq("empresa_id", empresa_id)
+        .eq("fecha_programada", hoy.isoformat())
+        .in_("estado", ["pendiente", "asignada", "en_curso"])
+        .order("hora_inicio")
+        .limit(10)
+        .execute()
+    )
+    ots_pendientes_hoy = r_pendientes.data or []
+
+    # Próximas OTs de contratos activos
+    r_contratos = (
+        db.table("contratos")
+        .select("id, tipo_servicio, prox_ot, clientes(razon_social)")
+        .eq("empresa_id", empresa_id)
+        .eq("activo", True)
+        .order("prox_ot")
+        .limit(5)
+        .execute()
+    )
+    proximas_contratos = r_contratos.data or []
+
     return {
         "ots_hoy": {
             "total": len([o for o in ots_hoy if o["estado"] != "cancelada"]),
@@ -97,6 +122,8 @@ def dashboard(token=Depends(verify_token)):
         "ots_ayer_total": ots_ayer_total,
         "semana": list(semana_map.values()),
         "tecnicos_hoy": list(tecnicos_map.values()),
+        "ots_pendientes_hoy": ots_pendientes_hoy,
+        "proximas_contratos": proximas_contratos,
     }
 
 
@@ -138,7 +165,7 @@ def resumen(desde: str = None, hasta: str = None, token=Depends(verify_token)):
             label = d.strftime("%-d/%m")
         except ValueError:
             label = d.strftime("%d/%m").lstrip("0") or "0"
-        dias_map[key] = {"dia": label, "realizadas": 0, "pendientes": 0, "canceladas": 0}
+        dias_map[key] = {"dia": key, "realizadas": 0, "pendientes": 0, "canceladas": 0}
 
     for ot in ots:
         key = ot["fecha_programada"]
@@ -193,4 +220,79 @@ def resumen(desde: str = None, hasta: str = None, token=Depends(verify_token)):
         "por_dia": list(dias_map.values()),
         "ranking_tecnicos": ranking,
         "por_tipo": tipos,
+    }
+
+
+@router.get("/horas-tecnicos")
+def horas_tecnicos(desde: str = None, hasta: str = None, token=Depends(verify_token)):
+    """
+    Devuelve horas trabajadas vs esperadas por técnico en el período.
+    Las horas trabajadas se estiman como: OTs realizadas × horas_base del técnico.
+    Las horas esperadas se calculan como: días hábiles × horas_base.
+    """
+    empresa_id = get_empresa_id(token)
+    db = get_db()
+
+    hoy = date.today()
+    fecha_hasta = date.fromisoformat(hasta) if hasta else hoy
+    fecha_desde = date.fromisoformat(desde) if desde else hoy - timedelta(days=6)
+
+    # Días hábiles (lunes-viernes) en el período
+    dias_habiles = sum(
+        1 for i in range((fecha_hasta - fecha_desde).days + 1)
+        if (fecha_desde + timedelta(days=i)).weekday() < 5
+    )
+
+    # Técnicos activos
+    r_tecs = (
+        db.table("tecnicos")
+        .select("id, nombre, horas_base, estado")
+        .eq("empresa_id", empresa_id)
+        .execute()
+    )
+    tecnicos = {t["id"]: t for t in (r_tecs.data or [])}
+
+    # OTs realizadas en el período
+    r_ots = (
+        db.table("ordenes_trabajo")
+        .select("tecnico_id, tecnicos_ids, estado, fecha_programada")
+        .eq("empresa_id", empresa_id)
+        .eq("estado", "realizada")
+        .gte("fecha_programada", fecha_desde.isoformat())
+        .lte("fecha_programada", fecha_hasta.isoformat())
+        .execute()
+    )
+    ots = r_ots.data or []
+
+    # Contar OTs por técnico
+    ots_por_tec: dict[str, int] = {}
+    for ot in ots:
+        ids = ot.get("tecnicos_ids") or ([ot["tecnico_id"]] if ot.get("tecnico_id") else [])
+        for tid in ids:
+            ots_por_tec[tid] = ots_por_tec.get(tid, 0) + 1
+
+    resultado = []
+    for tid, tec in tecnicos.items():
+        horas_base   = tec.get("horas_base") or 8
+        ots_realizadas = ots_por_tec.get(tid, 0)
+        horas_trabajadas = ots_realizadas * horas_base  # estimación: 1 OT = horas_base
+        horas_esperadas  = dias_habiles * horas_base
+        diferencia       = horas_trabajadas - horas_esperadas
+        resultado.append({
+            "id":               tid,
+            "nombre":           tec["nombre"],
+            "estado":           tec["estado"],
+            "horas_base":       horas_base,
+            "horas_esperadas":  horas_esperadas,
+            "horas_trabajadas": horas_trabajadas,
+            "ots_realizadas":   ots_realizadas,
+            "diferencia":       diferencia,          # positivo = horas extra, negativo = faltante
+            "cumplimiento_pct": round(min((horas_trabajadas / horas_esperadas * 100), 150)) if horas_esperadas > 0 else 0,
+        })
+
+    resultado.sort(key=lambda x: x["horas_trabajadas"], reverse=True)
+
+    return {
+        "periodo": {"desde": fecha_desde.isoformat(), "hasta": fecha_hasta.isoformat(), "dias_habiles": dias_habiles},
+        "tecnicos": resultado,
     }
